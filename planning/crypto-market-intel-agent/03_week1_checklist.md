@@ -4,11 +4,11 @@
 
 ## Day 1
 
-- [ ] 创建项目目录 `crypto-market-intel-agent/`
-- [ ] 初始化 `uv` 项目
-- [ ] 建立 `src/`、`tests/`、`data/`、`reports/`
-- [ ] 写 `.env.example`
-- [ ] 写 `README.md` 的项目目标和运行方式草稿
+- [x] 在仓库根目录初始化主项目结构
+- [x] 初始化 `uv` 项目
+- [x] 建立 `src/`、`tests/`、`data/`、`reports/`
+- [x] 写 `.env.example`
+- [x] 写 `README.md` 的项目目标和运行方式草稿
 
 交付标准：目录结构固定下来，别人能看懂项目目标。
 

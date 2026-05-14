@@ -1,7 +1,25 @@
 [project]
-name = "dl-ai-agentic"
+name = "crypto-market-intel-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "Crypto market event intelligence agent"
 readme = "README.md"
-requires-python = ">=3.14"
-dependencies = []
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.8.0",
+  "sqlalchemy>=2.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/crypto_market_intel"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0",
+]
