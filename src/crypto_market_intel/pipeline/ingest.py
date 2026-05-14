@@ -6,12 +6,43 @@ from datetime import datetime, timezone
 from crypto_market_intel.db.engine import create_db_engine, create_session_factory, get_database_url
 from crypto_market_intel.db.models import Base
 from crypto_market_intel.db.repo import upsert_source_record
-from crypto_market_intel.sources.binance_announcements import compute_content_hash, fetch_binance_announcements
+from crypto_market_intel.sources.base import SourceFetcher, compute_content_hash
+from crypto_market_intel.sources.binance_announcements import fetch_binance_announcements
+from crypto_market_intel.sources.coindesk_news import fetch_coindesk_news
+
+
+SOURCE_FETCHERS: dict[str, SourceFetcher] = {
+	"binance_announcements": fetch_binance_announcements,
+	"coindesk_news": fetch_coindesk_news,
+}
+
+
+def run_source_ingest(source_name: str, limit: int = 20) -> dict[str, int]:
+	fetcher = SOURCE_FETCHERS.get(source_name)
+	if fetcher is None:
+		supported = ", ".join(sorted(SOURCE_FETCHERS.keys()))
+		raise ValueError(f"Unsupported source '{source_name}'. Supported: {supported}")
+
+	records = fetcher(limit=limit)
+	return _persist_source_records(records)
 
 
 def run_binance_ingest(limit: int = 20) -> dict[str, int]:
-	records = fetch_binance_announcements(limit=limit)
+	return run_source_ingest("binance_announcements", limit=limit)
 
+
+def run_coindesk_ingest(limit: int = 20) -> dict[str, int]:
+	return run_source_ingest("coindesk_news", limit=limit)
+
+
+def run_all_sources_ingest(limit: int = 20) -> dict[str, dict[str, int]]:
+	results: dict[str, dict[str, int]] = {}
+	for source_name in sorted(SOURCE_FETCHERS.keys()):
+		results[source_name] = run_source_ingest(source_name, limit=limit)
+	return results
+
+
+def _persist_source_records(records) -> dict[str, int]:
 	engine = create_db_engine(get_database_url())
 	Base.metadata.create_all(engine)
 	session_factory = create_session_factory(engine)

@@ -23,9 +23,9 @@
 
 ## Day 3
 
-- [ ] 接入第二个 source：新闻源或项目公告源
-- [ ] 统一 source 接口
-- [ ] 两个 source 的输出都能写入 `source_records`
+- [x] 接入第二个 source：新闻源或项目公告源
+- [x] 统一 source 接口
+- [x] 两个 source 的输出都能写入 `source_records`
 
 交付标准：两个来源的数据都能入库。
 

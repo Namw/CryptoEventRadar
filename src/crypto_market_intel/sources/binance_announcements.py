@@ -4,14 +4,13 @@ import json
 import os
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from hashlib import sha256
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib import request
 from urllib.parse import urlencode
 from xml.etree import ElementTree
 
-from crypto_market_intel.sources.base import RawSourceRecord
+from crypto_market_intel.sources.base import RawSourceRecord, compute_content_hash as _compute_content_hash
 
 BINANCE_ARTICLE_API = "https://www.binance.com/bapi/composite/v1/public/cms/article/list/query"
 BINANCE_CATALOG_ARTICLE_API = "https://www.binance.com/bapi/composite/v1/public/cms/article/catalog/list/query"
@@ -19,8 +18,7 @@ BINANCE_ANNOUNCEMENT_RSS = "https://www.binance.com/en/support/announcement/rss"
 
 
 def compute_content_hash(payload: dict[str, Any]) -> str:
-    canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    return sha256(canonical.encode("utf-8")).hexdigest()
+    return _compute_content_hash(payload)
 
 
 def _to_datetime(value: Any) -> datetime | None:

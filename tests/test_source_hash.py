@@ -1,4 +1,4 @@
-from crypto_market_intel.sources.binance_announcements import compute_content_hash
+from crypto_market_intel.sources.base import compute_content_hash
 
 
 def test_content_hash_stable_for_same_payload():

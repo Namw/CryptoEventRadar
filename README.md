@@ -29,3 +29,17 @@ BINANCE_PROXY_URL=http://127.0.0.1:7890
 默认数据库路径来自 `.env.example`：
 
 - `DATABASE_URL=sqlite:///./data/app.db`
+
+## Day 3 运行方式
+
+抓取第二个 source（Coindesk RSS）并写入同一张 `source_records`：
+
+```bash
+uv run python main.py ingest-coindesk --limit 20
+```
+
+一次抓取两个 source：
+
+```bash
+uv run python main.py ingest-all --limit 20
+```
