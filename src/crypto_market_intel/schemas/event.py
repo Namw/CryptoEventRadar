@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from datetime import datetime
+
+from pydantic import BaseModel, Field
 
 
 class UnifiedEvent(BaseModel):
@@ -7,7 +9,10 @@ class UnifiedEvent(BaseModel):
     source_event_id: str
     event_type: str
     title: str
+    source_url: str | None = None
+    assets: list[str] = Field(default_factory=list)
     summary: str | None = None
     raw_text: str | None = None
-    event_time: str | None = None
-    detected_at: str | None = None
+    event_time: datetime | None = None
+    detected_at: datetime
+    status: str = "new"

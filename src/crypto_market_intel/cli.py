@@ -4,6 +4,7 @@ import argparse
 from collections.abc import Sequence
 
 from crypto_market_intel.pipeline.ingest import run_all_sources_ingest, run_binance_ingest, run_coindesk_ingest
+from crypto_market_intel.pipeline.normalize import run_normalize
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -18,6 +19,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     ingest_all_parser = subparsers.add_parser("ingest-all", help="Ingest all enabled sources")
     ingest_all_parser.add_argument("--limit", type=int, default=20, help="Max records to fetch per source")
+
+    normalize_parser = subparsers.add_parser("normalize-events", help="Normalize source_records into events")
+    normalize_parser.add_argument("--limit", type=int, default=50, help="Max source records to normalize")
 
     args = parser.parse_args(argv)
     if args.command == "ingest-binance":
@@ -43,6 +47,14 @@ def main(argv: Sequence[str] | None = None) -> None:
                 f"{source_name}: "
                 f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']}"
             )
+        return
+
+    if args.command == "normalize-events":
+        result = run_normalize(limit=args.limit)
+        print(
+            "normalize complete: "
+            f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']}"
+        )
         return
 
     print("crypto-market-intel-agent: scaffold ready")

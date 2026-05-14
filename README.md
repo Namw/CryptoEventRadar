@@ -43,3 +43,11 @@ uv run python main.py ingest-coindesk --limit 20
 ```bash
 uv run python main.py ingest-all --limit 20
 ```
+
+## Day 4 运行方式
+
+将 source_records 规范化为统一事件并写入 events：
+
+```bash
+uv run python main.py normalize-events --limit 50
+```

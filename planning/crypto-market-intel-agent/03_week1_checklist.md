@@ -31,10 +31,10 @@
 
 ## Day 4
 
-- [ ] 定义 `UnifiedEvent` Pydantic 模型
-- [ ] 实现 `normalize.py`
-- [ ] 把 source records 规范化为统一事件
-- [ ] 给事件打基础标签：source、title、url、event_time
+- [x] 定义 `UnifiedEvent` Pydantic 模型
+- [x] 实现 `normalize.py`
+- [x] 把 source records 规范化为统一事件
+- [x] 给事件打基础标签：source、title、url、event_time
 
 交付标准：你不再面对两套乱结构，而是统一事件对象。
 
