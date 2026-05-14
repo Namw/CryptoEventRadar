@@ -12,6 +12,20 @@
 
 当前仓库已完成规划文档，正在进行 Week 1 的工程化落地。
 
-## 运行方式（占位）
+## Day 2 运行方式
 
-后续补充 `uv` 命令与 CLI 用法。
+先抓取 Binance 公告并写入 SQLite `source_records`：
+
+```bash
+uv run python main.py ingest-binance --limit 20
+```
+
+如果本地网络对 Binance 有拦截，请在 `.env` 中配置代理（可用你的 VPN 本地代理地址）：
+
+```env
+BINANCE_PROXY_URL=http://127.0.0.1:7890
+```
+
+默认数据库路径来自 `.env.example`：
+
+- `DATABASE_URL=sqlite:///./data/app.db`

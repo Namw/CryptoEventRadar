@@ -14,10 +14,10 @@
 
 ## Day 2
 
-- [ ] 接入第一个 source：Binance 公告
-- [ ] 拉到原始数据
-- [ ] 保存到本地 JSON 或 SQLite
-- [ ] 给原始数据计算 `content_hash`
+- [x] 接入第一个 source：Binance 公告
+- [x] 拉到原始数据
+- [x] 保存到本地 JSON 或 SQLite
+- [x] 给原始数据计算 `content_hash`
 
 交付标准：能稳定抓到第一类真实数据。
 
