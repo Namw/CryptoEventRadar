@@ -5,6 +5,8 @@ description = "Crypto market event intelligence agent"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "langchain>=0.3.0",
+  "langchain-openai>=0.2.0",
   "pydantic>=2.8.0",
   "sqlalchemy>=2.0.0",
   "python-dotenv>=1.0.0",

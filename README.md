@@ -51,3 +51,31 @@ uv run python main.py ingest-all --limit 20
 ```bash
 uv run python main.py normalize-events --limit 50
 ```
+
+## Day 5 运行方式
+
+对规范化事件执行分析（LLM + fallback），并打印可观测进度：
+
+```bash
+uv run python main.py analyze-events --limit 50
+```
+
+## Day 6 运行方式
+
+生成 Markdown 日报并写入 `reports/`：
+
+```bash
+uv run python main.py publish-report --limit 30
+```
+
+如需在发布阶段尝试将卡片内容翻译为简体中文（LLM 失败会自动回退原文）：
+
+```bash
+uv run python main.py publish-report --limit 30 --translate-zh
+```
+
+自定义日报输出目录：
+
+```bash
+uv run python main.py publish-report --limit 30 --reports-dir reports
+```

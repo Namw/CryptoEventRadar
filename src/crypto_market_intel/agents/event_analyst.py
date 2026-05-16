@@ -5,7 +5,31 @@ import os
 from dataclasses import dataclass
 from collections.abc import Iterable
 from typing import Any
-from urllib import error, request
+from urllib import error
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
+try:
+	from openai import (
+		APIConnectionError,
+		APIStatusError,
+		APITimeoutError,
+		AuthenticationError,
+		BadRequestError,
+		NotFoundError,
+		PermissionDeniedError,
+		RateLimitError,
+	)
+except Exception:  # pragma: no cover
+	APIStatusError = Exception  # type: ignore[assignment]
+	APIConnectionError = Exception  # type: ignore[assignment]
+	APITimeoutError = Exception  # type: ignore[assignment]
+	AuthenticationError = Exception  # type: ignore[assignment]
+	BadRequestError = Exception  # type: ignore[assignment]
+	NotFoundError = Exception  # type: ignore[assignment]
+	PermissionDeniedError = Exception  # type: ignore[assignment]
+	RateLimitError = Exception  # type: ignore[assignment]
 
 from crypto_market_intel.schemas.event import EventAnalysis, UnifiedEvent
 
@@ -112,36 +136,42 @@ def _analyze_with_llm(event: UnifiedEvent) -> tuple[EventAnalysis | None, str | 
 		"event_time": event.event_time.isoformat() if event.event_time else None,
 	}
 
-	body = {
-		"model": config.model,
-		"temperature": 0,
-		"messages": [
-			{"role": "system", "content": DEFAULT_ANALYST_PROMPT},
-			{
-				"role": "user",
-				"content": json.dumps(prompt_input, ensure_ascii=False),
-			},
-		],
-	}
-
-	endpoint = f"{config.base_url.rstrip('/')}/chat/completions"
-	req = request.Request(
-		endpoint,
-		data=json.dumps(body).encode("utf-8"),
-		headers={
-			"Authorization": f"Bearer {config.api_key}",
-			"Content-Type": "application/json",
-		},
-		method="POST",
-	)
-
 	try:
-		with request.urlopen(req, timeout=config.timeout_seconds) as resp:
-			response_payload = json.loads(resp.read().decode("utf-8"))
-	except (error.URLError, error.HTTPError, TimeoutError, json.JSONDecodeError):
-		return None, "llm_request_failed", config.model
+		llm = ChatOpenAI(
+			model=config.model,
+			api_key=config.api_key,
+			base_url=config.base_url,
+			temperature=0,
+			timeout=config.timeout_seconds,
+		)
+		response = llm.invoke(
+			[
+				SystemMessage(content=DEFAULT_ANALYST_PROMPT),
+				HumanMessage(content=json.dumps(prompt_input, ensure_ascii=False)),
+			]
+		)
+	except AuthenticationError:
+		return None, "llm_http_401_unauthorized", config.model
+	except PermissionDeniedError:
+		return None, "llm_http_403_forbidden", config.model
+	except RateLimitError:
+		return None, "llm_http_429_rate_limited", config.model
+	except BadRequestError:
+		return None, "llm_http_400_bad_request", config.model
+	except NotFoundError:
+		return None, "llm_http_404_not_found", config.model
+	except APITimeoutError:
+		return None, "llm_timeout", config.model
+	except APIConnectionError:
+		return None, "llm_network_error", config.model
+	except APIStatusError as exc:
+		return None, _classify_status_error_reason(exc), config.model
+	except ImportError:
+		return None, "llm_langchain_not_installed", config.model
+	except error.URLError as exc:
+		return None, _classify_url_error_reason(exc), config.model
 
-	content = _extract_message_content(response_payload)
+	content = _extract_langchain_content(response.content)
 	if not content:
 		return None, "llm_empty_response", config.model
 
@@ -173,16 +203,20 @@ def _load_llm_config() -> LLMConfig | None:
 	)
 
 
-def _extract_message_content(response_payload: dict[str, Any]) -> str | None:
-	choices = response_payload.get("choices")
-	if not isinstance(choices, list) or not choices:
-		return None
-	message = choices[0].get("message") if isinstance(choices[0], dict) else None
-	if not isinstance(message, dict):
-		return None
-	content = message.get("content")
+def _extract_langchain_content(content: Any) -> str | None:
 	if isinstance(content, str):
 		return content.strip()
+	if isinstance(content, list):
+		parts: list[str] = []
+		for item in content:
+			if isinstance(item, dict):
+				text_value = item.get("text")
+				if isinstance(text_value, str) and text_value.strip():
+					parts.append(text_value.strip())
+			elif isinstance(item, str) and item.strip():
+				parts.append(item.strip())
+		if parts:
+			return "\n".join(parts)
 	return None
 
 
@@ -244,6 +278,62 @@ def _build_analysis_from_llm_payload(event: UnifiedEvent, payload: dict[str, Any
 		importance_reason=importance_reason,
 		status="analyzed",
 	)
+
+
+def _classify_http_error_reason(exc: error.HTTPError) -> str:
+	status = int(getattr(exc, "code", 0) or 0)
+	if status == 400:
+		return "llm_http_400_bad_request"
+	if status == 401:
+		return "llm_http_401_unauthorized"
+	if status == 403:
+		return "llm_http_403_forbidden"
+	if status == 404:
+		return "llm_http_404_not_found"
+	if status == 408:
+		return "llm_http_408_timeout"
+	if status == 429:
+		return "llm_http_429_rate_limited"
+	if 500 <= status <= 599:
+		return f"llm_http_{status}_server_error"
+	if status > 0:
+		return f"llm_http_{status}"
+	return "llm_http_error"
+
+
+def _classify_status_error_reason(exc: APIStatusError) -> str:
+	status = int(getattr(exc, "status_code", 0) or 0)
+	if status == 400:
+		return "llm_http_400_bad_request"
+	if status == 401:
+		return "llm_http_401_unauthorized"
+	if status == 403:
+		return "llm_http_403_forbidden"
+	if status == 404:
+		return "llm_http_404_not_found"
+	if status == 408:
+		return "llm_http_408_timeout"
+	if status == 429:
+		return "llm_http_429_rate_limited"
+	if 500 <= status <= 599:
+		return f"llm_http_{status}_server_error"
+	if status > 0:
+		return f"llm_http_{status}"
+	return "llm_http_error"
+
+
+def _classify_url_error_reason(exc: error.URLError) -> str:
+	reason = getattr(exc, "reason", None)
+	text = str(reason or exc).lower()
+	if isinstance(reason, (TimeoutError, socket_timeout)) or "timed out" in text or "timeout" in text:
+		return "llm_timeout"
+	if "name or service not known" in text or "nodename nor servname provided" in text:
+		return "llm_dns_error"
+	if "connection refused" in text:
+		return "llm_connection_refused"
+	if "certificate" in text or "ssl" in text:
+		return "llm_tls_error"
+	return "llm_network_error"
 
 
 def _build_summary(event: UnifiedEvent) -> str:

@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from crypto_market_intel.pipeline.ingest import run_all_sources_ingest, run_binance_ingest, run_coindesk_ingest
 from crypto_market_intel.pipeline.normalize import run_normalize
+from crypto_market_intel.pipeline.publish import run_publish
 from crypto_market_intel.services.event_service import run_analyze_events
 
 
@@ -26,6 +27,15 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     analyze_parser = subparsers.add_parser("analyze-events", help="Analyze normalized events")
     analyze_parser.add_argument("--limit", type=int, default=50, help="Max events to analyze")
+
+    publish_parser = subparsers.add_parser("publish-report", help="Generate markdown daily report")
+    publish_parser.add_argument("--limit", type=int, default=30, help="Max analyzed events to publish")
+    publish_parser.add_argument("--reports-dir", type=str, default="reports", help="Output directory for reports")
+    publish_parser.add_argument(
+        "--translate-zh",
+        action="store_true",
+        help="Translate report card text into Simplified Chinese via LLM",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "ingest-binance":
@@ -68,6 +78,21 @@ def main(argv: Sequence[str] | None = None) -> None:
             f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']} "
             f"llm_used={result['llm_used']} fallback_rules={result['fallback_rules']} "
             f"elapsed_seconds={result['elapsed_seconds']}"
+        )
+        return
+
+    if args.command == "publish-report":
+        result = run_publish(
+            limit=args.limit,
+            reports_dir=args.reports_dir,
+            translate_to_zh=args.translate_zh,
+        )
+        print(
+            "publish complete: "
+            f"events={result['events']} report_path={result['report_path']} "
+            f"translate_to_zh={result['translate_to_zh']} translated_cards={result['translated_cards']} "
+            f"translation_fallback_cards={result['translation_fallback_cards']} "
+            f"translation_reason={result['translation_reason']}"
         )
         return
 
