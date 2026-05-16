@@ -52,6 +52,14 @@ uv run python main.py ingest-all --limit 20
 uv run python main.py normalize-events --limit 50
 ```
 
+## Week 2 Step 1：重复事件检测与聚合
+
+对事件进行去重聚合，将重复事件标记为 `deduplicated`（主事件保留当前状态）：
+
+```bash
+uv run python main.py deduplicate-events --limit 200
+```
+
 ## Day 5 运行方式
 
 对规范化事件执行分析（LLM + fallback），并打印可观测进度：
@@ -79,3 +87,29 @@ uv run python main.py publish-report --limit 30 --translate-zh
 ```bash
 uv run python main.py publish-report --limit 30 --reports-dir reports
 ```
+
+## Day 7：完整流程验证（已验证）
+
+使用临时数据库从零跑通一遍流程（不污染默认 `data/app.db`）：
+
+```bash
+DATABASE_URL=sqlite:///./data/day7_smoke.db uv run python main.py ingest-all --limit 3
+DATABASE_URL=sqlite:///./data/day7_smoke.db uv run python main.py normalize-events --limit 10
+DATABASE_URL=sqlite:///./data/day7_smoke.db uv run python main.py analyze-events --limit 10
+DATABASE_URL=sqlite:///./data/day7_smoke.db uv run python main.py publish-report --limit 10
+```
+
+校验数据库状态：
+
+```bash
+sqlite3 data/day7_smoke.db ".tables"
+sqlite3 data/day7_smoke.db "SELECT status, COUNT(*) FROM events GROUP BY status;"
+```
+
+本次验证结果：`source_records=6`，`events=6`，`events.status=analyzed(6)`，并生成日报文件。
+
+## 已知问题
+
+- 直接执行 `python3 main.py ...` 可能报 `ModuleNotFoundError: No module named 'sqlalchemy'`。
+- 原因是依赖安装在 `uv` 虚拟环境中；请统一使用 `uv run python main.py ...`。
+- 当 source 没有新数据时，`normalize-events` 出现 `fetched=0 inserted=0` 属于正常行为，不是故障。

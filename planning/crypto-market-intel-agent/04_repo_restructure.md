@@ -17,15 +17,7 @@
 - 不要先接太多 source
 - 不要先做自动交易
 
-## 推荐的下一步目录
-
-在当前仓库根目录下，新建真正的主项目目录：
-
-```text
-crypto-market-intel-agent/
-```
-
-后面所有实际代码都放进这个目录，`planning/` 只保存规划文档。
+`planning/` 只保存规划文档。
 
 ## 建议的开发顺序
 
@@ -54,18 +46,3 @@ crypto-market-intel-agent/
 ### Step 4
 
 先打通命令行跑通流程，再考虑服务化。
-
-## 你今天完成就够了的事情
-
-- [ ] 读完 `01_project_blueprint.md`
-- [ ] 读完 `02_data_model.md`
-- [ ] 创建 `crypto-market-intel-agent/`
-- [ ] 创建项目骨架目录
-- [ ] 写一句项目目标到新项目 README
-- [ ] 把今天冒出来的新想法写进 `backlog.md`
-
-## 明天的第一优先级
-
-- [ ] 接 Binance 公告源
-- [ ] 抓到第一批真实数据
-- [ ] 落地 `source_records`

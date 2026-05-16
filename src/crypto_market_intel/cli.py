@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
+from crypto_market_intel.pipeline.deduplicate import run_deduplicate
 from crypto_market_intel.pipeline.ingest import run_all_sources_ingest, run_binance_ingest, run_coindesk_ingest
 from crypto_market_intel.pipeline.normalize import run_normalize
 from crypto_market_intel.pipeline.publish import run_publish
@@ -24,6 +25,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     normalize_parser = subparsers.add_parser("normalize-events", help="Normalize source_records into events")
     normalize_parser.add_argument("--limit", type=int, default=50, help="Max source records to normalize")
+
+    dedupe_parser = subparsers.add_parser("deduplicate-events", help="Detect duplicate events and build clusters")
+    dedupe_parser.add_argument("--limit", type=int, default=200, help="Max events to deduplicate")
 
     analyze_parser = subparsers.add_parser("analyze-events", help="Analyze normalized events")
     analyze_parser.add_argument("--limit", type=int, default=50, help="Max events to analyze")
@@ -68,6 +72,15 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(
             "normalize complete: "
             f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']}"
+        )
+        return
+
+    if args.command == "deduplicate-events":
+        result = run_deduplicate(limit=args.limit)
+        print(
+            "deduplicate complete: "
+            f"fetched={result['fetched']} updated={result['updated']} "
+            f"clustered={result['clustered']} deduplicated={result['deduplicated']}"
         )
         return
 
