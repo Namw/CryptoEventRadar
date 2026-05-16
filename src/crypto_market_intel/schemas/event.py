@@ -16,3 +16,16 @@ class UnifiedEvent(BaseModel):
     event_time: datetime | None = None
     detected_at: datetime
     status: str = "new"
+
+
+class EventAnalysis(BaseModel):
+    event_id: str
+    source: str
+    source_event_id: str
+    event_type: str
+    title: str
+    summary: str
+    assets: list[str] = Field(default_factory=list)
+    importance_score: float
+    importance_reason: str
+    status: str = "analyzed"

@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from crypto_market_intel.pipeline.ingest import run_all_sources_ingest, run_binance_ingest, run_coindesk_ingest
 from crypto_market_intel.pipeline.normalize import run_normalize
+from crypto_market_intel.services.event_service import run_analyze_events
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -22,6 +23,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     normalize_parser = subparsers.add_parser("normalize-events", help="Normalize source_records into events")
     normalize_parser.add_argument("--limit", type=int, default=50, help="Max source records to normalize")
+
+    analyze_parser = subparsers.add_parser("analyze-events", help="Analyze normalized events")
+    analyze_parser.add_argument("--limit", type=int, default=50, help="Max events to analyze")
 
     args = parser.parse_args(argv)
     if args.command == "ingest-binance":
@@ -54,6 +58,16 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(
             "normalize complete: "
             f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']}"
+        )
+        return
+
+    if args.command == "analyze-events":
+        result = run_analyze_events(limit=args.limit)
+        print(
+            "analyze complete: "
+            f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']} "
+            f"llm_used={result['llm_used']} fallback_rules={result['fallback_rules']} "
+            f"elapsed_seconds={result['elapsed_seconds']}"
         )
         return
 

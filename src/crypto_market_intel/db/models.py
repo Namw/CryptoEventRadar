@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -63,6 +63,8 @@ class Event(Base):
 	detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 	source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
 	assets_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+	importance_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+	importance_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 	status: Mapped[str] = mapped_column(String(32), nullable=False, default="new")
 	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 	updated_at: Mapped[datetime] = mapped_column(
