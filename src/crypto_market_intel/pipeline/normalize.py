@@ -44,6 +44,7 @@ def run_normalize(limit: int = 50) -> dict[str, int]:
 					detected_at=unified_event.detected_at,
 					source_url=unified_event.source_url,
 					assets_json=json.dumps(unified_event.assets, ensure_ascii=False),
+					source_credibility=unified_event.source_credibility,
 					status=unified_event.status,
 				)
 			)
@@ -58,6 +59,18 @@ def run_normalize(limit: int = 50) -> dict[str, int]:
 	}
 
 
+# 来源可信度静态评级表：基于来源性质的先验经验分，后续可用历史准确率数据校准
+_SOURCE_CREDIBILITY: dict[str, float] = {
+	"binance_announcements": 0.95,  # 官方交易所一手公告，可信度最高
+	"coindesk_news": 0.75,          # 行业主流媒体，二手来源，可信度中等
+}
+_DEFAULT_SOURCE_CREDIBILITY = 0.6  # 未知来源的默认可信度
+
+
+def _get_source_credibility(source_name: str) -> float:
+	return _SOURCE_CREDIBILITY.get(source_name, _DEFAULT_SOURCE_CREDIBILITY)
+
+
 def normalize_source_record(record: SourceRecord) -> UnifiedEvent:
 	payload = _parse_payload(record.raw_payload)
 	title = (record.title or _payload_str(payload, "title") or "Untitled event").strip()
@@ -65,6 +78,7 @@ def normalize_source_record(record: SourceRecord) -> UnifiedEvent:
 	event_time = record.published_at
 	event_type = _classify_event_type(record.source_name, title)
 	assets = _extract_assets(title)
+	source_credibility = _get_source_credibility(record.source_name)
 
 	stable_key = f"{record.source_name}:{record.source_record_id}"
 	return UnifiedEvent(
@@ -79,6 +93,7 @@ def normalize_source_record(record: SourceRecord) -> UnifiedEvent:
 		raw_text=_payload_str(payload, "description"),
 		event_time=event_time,
 		detected_at=datetime.now(timezone.utc),
+		source_credibility=source_credibility,
 		status="new",
 	)
 

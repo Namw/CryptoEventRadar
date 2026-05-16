@@ -65,6 +65,7 @@ class Event(Base):
 	assets_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
 	importance_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
 	importance_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+	source_credibility: Mapped[float] = mapped_column(Float, nullable=False, default=0.8)
 	dedupe_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 	cluster_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 	status: Mapped[str] = mapped_column(String(32), nullable=False, default="new")

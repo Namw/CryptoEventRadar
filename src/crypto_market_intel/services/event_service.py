@@ -30,6 +30,8 @@ def _ensure_event_columns(engine) -> None:
 		statements.append("ALTER TABLE events ADD COLUMN importance_score FLOAT NOT NULL DEFAULT 0.0")
 	if "importance_reason" not in column_names:
 		statements.append("ALTER TABLE events ADD COLUMN importance_reason TEXT")
+	if "source_credibility" not in column_names:
+		statements.append("ALTER TABLE events ADD COLUMN source_credibility FLOAT NOT NULL DEFAULT 0.8")
 
 	if not statements:
 		return

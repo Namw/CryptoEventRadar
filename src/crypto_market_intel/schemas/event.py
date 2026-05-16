@@ -15,6 +15,7 @@ class UnifiedEvent(BaseModel):
     raw_text: str | None = None
     event_time: datetime | None = None
     detected_at: datetime
+    source_credibility: float = 0.8
     status: str = "new"
 
 

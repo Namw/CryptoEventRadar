@@ -8,6 +8,7 @@
 
 ## Ideas
 
+- [ ] 规则 fallback 打分关键词权重增强：当前规则版 `_score_importance` 同类型事件一律同分，无法区分"微小 listing"和"引发市场震动的 listing"。后续可加关键词权重（如金额大小、主流资产符号、"$XXX million"等信号），作为无 LLM 时的降级增强。
 - [ ] 链上大额转账监控
 - [ ] 大额清算事件解释
 - [ ] Telegram 推送

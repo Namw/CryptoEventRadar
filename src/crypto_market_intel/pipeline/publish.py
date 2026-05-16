@@ -126,10 +126,11 @@ def _format_event_card(
 			title, summary, importance_reason = translated_triplet
 			translated = True
 
+	source_credibility = f"{event.source_credibility:.2f}" if hasattr(event, "source_credibility") and event.source_credibility is not None else "N/A"
 	lines = [
 		f"### {index}. {title}",
 		f"- 类型：{event.event_type}",
-		f"- 来源：{event.source}",
+		f"- 来源：{event.source}（可信度 {source_credibility}）",
 		f"- 时间：{event_time_text}",
 		f"- 资产：{assets_text}",
 		f"- 重要度：{importance_score}",
