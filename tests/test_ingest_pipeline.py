@@ -63,3 +63,32 @@ def test_read_url_bytes_retries_for_transient_url_error(monkeypatch):
 
     assert data == b"ok"
     assert attempts["count"] == 2
+
+
+def test_to_absolute_url_builds_detail_link_for_binance_code():
+    code = "506a7482e6b94bc58f3e275cb15c2861"
+    url = binance._to_absolute_url(code)
+
+    assert url == f"https://www.binance.com/en/support/announcement/detail/{code}"
+
+
+def test_records_from_api_payload_formats_url_from_code_field():
+    payload = {
+        "data": {
+            "articles": [
+                {
+                    "id": "123",
+                    "code": "71f44e5e014c445697bb6a6f70315e35",
+                    "title": "Test Binance Announcement",
+                }
+            ]
+        }
+    }
+
+    records = binance._records_from_api_payload(payload)
+
+    assert len(records) == 1
+    assert (
+        records[0].url
+        == "https://www.binance.com/en/support/announcement/detail/71f44e5e014c445697bb6a6f70315e35"
+    )

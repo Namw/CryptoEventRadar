@@ -404,3 +404,56 @@ def test_publish_alerts_writes_empty_state_when_no_events_match_threshold(tmp_pa
     content = report_path.read_text(encoding="utf-8")
     assert "当前无命中告警阈值的事件" in content
     assert "告警阈值：0.90" in content
+
+
+def test_publish_alerts_normalizes_legacy_binance_source_url(tmp_path):
+    engine = create_db_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+
+    with session_factory() as session:
+        source_record = SourceRecord(
+            source_name="binance_announcements",
+            source_record_id="legacy-alert-1",
+            title="Binance listing update",
+            url="https://www.binance.com506a7482e6b94bc58f3e275cb15c2861",
+            published_at=datetime(2026, 5, 16, 12, 0, tzinfo=timezone.utc),
+            raw_payload='{"description": "sample"}',
+            content_hash="hash-legacy-alert-1",
+            fetched_at=datetime.now(timezone.utc),
+        )
+        session.add(source_record)
+        session.flush()
+
+        session.add(
+            Event(
+                event_id="legacy-alert-event-1",
+                source_record_db_id=source_record.id,
+                source="binance_announcements",
+                source_event_id="legacy-alert-1",
+                event_type="listing",
+                title="Binance listing update",
+                summary="legacy url regression test",
+                raw_text="sample",
+                event_time=datetime(2026, 5, 16, 12, 0, tzinfo=timezone.utc),
+                detected_at=datetime.now(timezone.utc),
+                source_url="https://www.binance.com506a7482e6b94bc58f3e275cb15c2861",
+                assets_json='["MEGA"]',
+                importance_score=0.95,
+                importance_reason="High-impact listing",
+                status="analyzed",
+            )
+        )
+        session.commit()
+
+    result = _publish_alerts_with_session_factory(
+        session_factory,
+        limit=10,
+        reports_dir=str(tmp_path),
+        min_importance=0.8,
+    )
+
+    report_path = Path(str(result["report_path"]))
+    content = report_path.read_text(encoding="utf-8")
+    assert "https://www.binance.com/en/support/announcement/detail/506a7482e6b94bc58f3e275cb15c2861" in content
+    assert "https://www.binance.com506a7482e6b94bc58f3e275cb15c2861" not in content

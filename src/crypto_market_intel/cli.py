@@ -11,6 +11,7 @@ from crypto_market_intel.pipeline.deduplicate import run_deduplicate
 from crypto_market_intel.pipeline.ingest import run_all_sources_ingest, run_binance_ingest, run_coindesk_ingest
 from crypto_market_intel.pipeline.normalize import run_normalize
 from crypto_market_intel.pipeline.publish import run_publish, run_publish_alerts
+from crypto_market_intel.pipeline.week5_samples import run_collect_historical_samples
 from crypto_market_intel.services.event_service import run_analyze_events
 
 
@@ -68,6 +69,34 @@ def main(argv: Sequence[str] | None = None) -> None:
         choices=["rules", "langchain_mcp"],
         default=None,
         help="Tool routing backend; default follows TOOL_ROUTER_BACKEND env",
+    )
+
+    week5_samples_parser = subparsers.add_parser(
+        "collect-week5-samples",
+        help="Collect historical samples for Week5 evaluation",
+    )
+    week5_samples_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=40,
+        help="Requested number of historical samples (suggested 30-50)",
+    )
+    week5_samples_parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="data/processed",
+        help="Output directory for sample jsonl file",
+    )
+    week5_samples_parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducible sampling",
+    )
+    week5_samples_parser.add_argument(
+        "--include-unanalyzed",
+        action="store_true",
+        help="Include events that are not analyzed yet",
     )
 
     args = parser.parse_args(argv)
@@ -172,6 +201,22 @@ def main(argv: Sequence[str] | None = None) -> None:
         result = answer_question(args.question, backend=args.backend)
         emit_structured_log("cli.command.done", command=command, result=result)
         print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+
+    if args.command == "collect-week5-samples":
+        result = run_collect_historical_samples(
+            sample_size=args.sample_size,
+            output_dir=args.output_dir,
+            seed=args.seed,
+            analyzed_only=not args.include_unanalyzed,
+        )
+        emit_structured_log("cli.command.done", command=command, result=result)
+        print(
+            "week5 sample collection complete: "
+            f"requested={result['requested']} collected={result['collected']} "
+            f"total_candidates={result['total_candidates']} output_path={result['output_path']} "
+            f"warning={result['warning']}"
+        )
         return
 
     emit_structured_log("cli.command.done", command=command, result="scaffold_ready")

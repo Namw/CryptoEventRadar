@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -40,9 +41,19 @@ def _to_datetime(value: Any) -> datetime | None:
 def _to_absolute_url(url: str | None) -> str | None:
     if not url:
         return None
-    if url.startswith("http://") or url.startswith("https://"):
-        return url
-    return f"https://www.binance.com{url}"
+
+    normalized = url.strip()
+    if normalized.startswith("http://") or normalized.startswith("https://"):
+        return normalized
+
+    if normalized.startswith("/"):
+        return f"https://www.binance.com{normalized}"
+
+    # Binance API may return a bare article code/id. Build a clickable detail page URL.
+    if re.fullmatch(r"[0-9a-fA-F]{24,}", normalized):
+        return f"https://www.binance.com/en/support/announcement/detail/{normalized}"
+
+    return f"https://www.binance.com/{normalized}"
 
 
 def _extract_articles(payload: dict[str, Any]) -> list[dict[str, Any]]:

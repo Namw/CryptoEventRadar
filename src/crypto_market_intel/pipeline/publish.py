@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -253,7 +254,7 @@ def _format_event_card(
     title = (event.title or "未命名事件").strip()
     summary = (event.summary or "暂无摘要").strip()
     importance_reason = (event.importance_reason or "暂无重要度说明").strip()
-    source_url = (event.source_url or "").strip()
+    source_url = _normalize_source_url((event.source_url or "").strip())
     translated = translated_triplet is not None
 
     if translated_triplet is not None:
@@ -274,6 +275,18 @@ def _format_event_card(
         lines.append(f"- 链接：{source_url}")
     lines.append("")
     return lines, translated
+
+
+def _normalize_source_url(url: str) -> str:
+    if not url:
+        return ""
+
+    matched = re.fullmatch(r"https://www\.binance\.com([0-9a-fA-F]{24,})", url)
+    if matched:
+        code = matched.group(1)
+        return f"https://www.binance.com/en/support/announcement/detail/{code}"
+
+    return url
 
 
 def _build_card_translator(
