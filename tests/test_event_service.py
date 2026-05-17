@@ -55,6 +55,7 @@ def test_analyze_events_updates_db_rows():
         event = session.query(Event).one()
 
     assert event.status == "analyzed"
+    assert event.summary is not None
     assert event.summary.startswith("BTC and ETH market update")
     assert event.event_type in {"project_news", "listing", "delisting", "security", "other"}
     assert json.loads(event.assets_json) == ["BTC", "ETH"]
