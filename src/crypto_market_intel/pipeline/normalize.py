@@ -9,10 +9,12 @@ from sqlalchemy import select
 
 from crypto_market_intel.db.engine import create_db_engine, create_session_factory, get_database_url
 from crypto_market_intel.db.models import Base, Event, SourceRecord
+from crypto_market_intel.observability import emit_structured_log
 from crypto_market_intel.schemas.event import UnifiedEvent
 
 
 def run_normalize(limit: int = 50) -> dict[str, int]:
+	emit_structured_log("pipeline.normalize.start", limit=limit)
 	engine = create_db_engine(get_database_url())
 	Base.metadata.create_all(engine)
 	session_factory = create_session_factory(engine)
@@ -52,11 +54,13 @@ def run_normalize(limit: int = 50) -> dict[str, int]:
 
 		session.commit()
 
-	return {
+	result = {
 		"fetched": len(source_records),
 		"inserted": inserted,
 		"skipped": 0,
 	}
+	emit_structured_log("pipeline.normalize.done", result=result)
+	return result
 
 
 # 来源可信度静态评级表：基于来源性质的先验经验分，后续可用历史准确率数据校准

@@ -7,10 +7,23 @@
 - 本地可运行
 - 可回溯事件数据
 - 可生成 Markdown 日报
+- 可生成 Markdown 告警
 
 ## 当前阶段
 
-当前仓库已完成规划文档，正在进行 Week 1 的工程化落地。
+当前仓库已完成 Week 1 到 Week 3，并进入 Week 4 交付阶段。
+
+当前已完成：
+
+- 数据采集、规范化、去重、分析、日报输出
+- 4 个工具能力与 agent 工具路由
+- CLI 单次执行与批量主链路
+- 本地 Markdown 告警输出
+- 命令级 trace id 与结构化日志
+
+当前未完成：
+
+- Week 5 评估数据与自动评估脚本
 
 ## Day 2 运行方式
 
@@ -86,6 +99,56 @@ uv run python main.py publish-report --limit 30 --translate-zh
 
 ```bash
 uv run python main.py publish-report --limit 30 --reports-dir reports
+```
+
+## Week 4：告警输出
+
+生成高重要度事件告警并写入 `reports/`：
+
+```bash
+uv run python main.py publish-alerts --limit 10 --min-importance 0.8
+```
+
+自定义告警输出目录或阈值：
+
+```bash
+uv run python main.py publish-alerts --limit 20 --min-importance 0.9 --reports-dir reports
+```
+
+说明：当前阶段的告警输出为本地 Markdown 产物，通知渠道还未接入。
+
+## Week 4：告警通知渠道（最小版）
+
+当前已支持最小通知渠道：
+
+- `console`：打印通知摘要到终端
+- `webhook`：发送 JSON 到 `ALERT_WEBHOOK_URL`
+- `both`：同时发送到 console 和 webhook
+
+在 `.env` 配置：
+
+```env
+ALERT_NOTIFY_CHANNEL=console
+ALERT_WEBHOOK_URL=
+ALERT_WEBHOOK_TIMEOUT_SECONDS=8
+```
+
+触发告警并发送通知：
+
+```bash
+uv run python main.py publish-alerts --limit 10 --min-importance 0.8 --notify
+```
+
+## Week 4：trace id 与结构化日志
+
+当前 CLI 与核心链路（ingest/normalize/deduplicate/analyze/publish/alert）会输出 JSON 结构化日志，并自动附带 trace_id，便于端到端排查与复盘。
+
+示例（简化）：
+
+```json
+{"event": "cli.command.start", "trace_id": "cli-publish-alerts-...", "command": "publish-alerts"}
+{"event": "pipeline.publish_alerts.start", "trace_id": "cli-publish-alerts-...", "limit": 10}
+{"event": "alert.notify.done", "trace_id": "cli-publish-alerts-...", "status": "ok", "channel": "console"}
 ```
 
 ## Week 3 工具路由（LangChain + MCP）

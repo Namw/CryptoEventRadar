@@ -8,15 +8,19 @@ from sqlalchemy import inspect, select, text
 from crypto_market_intel.agents.event_analyst import analyze_event_with_trace
 from crypto_market_intel.db.engine import create_db_engine, create_session_factory, get_database_url
 from crypto_market_intel.db.models import Base, Event
+from crypto_market_intel.observability import emit_structured_log
 from crypto_market_intel.schemas.event import UnifiedEvent
 
 
 def run_analyze_events(limit: int = 50, verbose: bool = True) -> dict[str, int | float]:
+	emit_structured_log("pipeline.analyze.start", limit=limit, verbose=verbose)
 	engine = create_db_engine(get_database_url())
 	Base.metadata.create_all(engine)
 	_ensure_event_columns(engine)
 	session_factory = create_session_factory(engine)
-	return _analyze_events_with_session_factory(session_factory, limit=limit, verbose=verbose)
+	result = _analyze_events_with_session_factory(session_factory, limit=limit, verbose=verbose)
+	emit_structured_log("pipeline.analyze.done", result=result)
+	return result
 
 
 def _ensure_event_columns(engine) -> None:

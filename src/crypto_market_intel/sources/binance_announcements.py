@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -68,17 +69,16 @@ def fetch_binance_announcements(limit: int = 20) -> list[RawSourceRecord]:
     )
 
     try:
-        with _open_url(req, timeout=20) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
+        payload = json.loads(_read_url_bytes(req, timeout=20).decode("utf-8"))
         records = _records_from_api_payload(payload)
         if records:
             return records[:limit]
-    except (HTTPError, URLError, TimeoutError):
+    except (HTTPError, URLError, TimeoutError, OSError):
         pass
 
     try:
         return fetch_binance_announcements_from_rss(limit=limit)
-    except (HTTPError, URLError, TimeoutError, ElementTree.ParseError) as exc:
+    except (HTTPError, URLError, TimeoutError, OSError, ElementTree.ParseError) as exc:
         raise RuntimeError(
             "Binance source fetch failed. If your network blocks Binance, set BINANCE_PROXY_URL in .env "
             "(example: http://127.0.0.1:7890) and retry."
@@ -114,8 +114,7 @@ def fetch_binance_announcements_from_rss(limit: int = 20) -> list[RawSourceRecor
         },
         method="GET",
     )
-    with _open_url(req, timeout=20) as resp:
-        raw_xml = resp.read().decode("utf-8")
+    raw_xml = _read_url_bytes(req, timeout=20).decode("utf-8")
 
     if not raw_xml.strip():
         raise ElementTree.ParseError("empty rss response")
@@ -170,3 +169,41 @@ def _open_url(req: request.Request, timeout: int):
         request.ProxyHandler({"http": proxy_url, "https": proxy_url})
     )
     return opener.open(req, timeout=timeout)
+
+
+def _read_url_bytes(
+    req: request.Request,
+    timeout: int,
+    attempts: int = 3,
+    retry_delay_seconds: float = 0.8,
+) -> bytes:
+    last_error: Exception | None = None
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            with _open_url(req, timeout=timeout) as resp:
+                return resp.read()
+        except HTTPError:
+            raise
+        except (URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+            if attempt >= attempts or not _is_retryable_network_error(exc):
+                raise
+            time.sleep(retry_delay_seconds * attempt)
+
+    if last_error is None:
+        raise RuntimeError("Unexpected network state when reading URL")
+    raise last_error
+
+
+def _is_retryable_network_error(exc: Exception) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    if isinstance(exc, URLError):
+        reason = exc.reason
+        if isinstance(reason, (TimeoutError, OSError)):
+            return True
+        if reason is None:
+            return False
+        reason_text = str(reason).lower()
+        return any(token in reason_text for token in ("unexpected eof", "timed out", "connection reset"))
+    return isinstance(exc, OSError)

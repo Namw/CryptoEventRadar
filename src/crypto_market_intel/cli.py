@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Sequence
+from uuid import uuid4
 
 from crypto_market_intel.agents.tool_router import answer_question
+from crypto_market_intel.observability import emit_structured_log, set_trace_id
 from crypto_market_intel.pipeline.deduplicate import run_deduplicate
 from crypto_market_intel.pipeline.ingest import run_all_sources_ingest, run_binance_ingest, run_coindesk_ingest
 from crypto_market_intel.pipeline.normalize import run_normalize
-from crypto_market_intel.pipeline.publish import run_publish
+from crypto_market_intel.pipeline.publish import run_publish, run_publish_alerts
 from crypto_market_intel.services.event_service import run_analyze_events
 
 
@@ -43,6 +45,21 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="Translate report card text into Simplified Chinese via LLM",
     )
 
+    publish_alerts_parser = subparsers.add_parser("publish-alerts", help="Generate markdown alerts for high-importance events")
+    publish_alerts_parser.add_argument("--limit", type=int, default=10, help="Max alert events to publish")
+    publish_alerts_parser.add_argument("--reports-dir", type=str, default="reports", help="Output directory for alert reports")
+    publish_alerts_parser.add_argument(
+        "--min-importance",
+        type=float,
+        default=0.8,
+        help="Minimum importance score required for alert output",
+    )
+    publish_alerts_parser.add_argument(
+        "--notify",
+        action="store_true",
+        help="Send alert notification after alert markdown is generated",
+    )
+
     tool_query_parser = subparsers.add_parser("tool-query", help="Route a natural language question to tools")
     tool_query_parser.add_argument("question", type=str, help="User question for tool routing")
     tool_query_parser.add_argument(
@@ -54,8 +71,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
 
     args = parser.parse_args(argv)
+    command = args.command or "noop"
+    trace_id = f"cli-{command}-{uuid4().hex[:12]}"
+    set_trace_id(trace_id)
+    emit_structured_log("cli.command.start", command=command)
+
     if args.command == "ingest-binance":
         result = run_binance_ingest(limit=args.limit)
+        emit_structured_log("cli.command.done", command=command, result=result)
         print(
             "ingest complete: "
             f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']}"
@@ -64,6 +87,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "ingest-coindesk":
         result = run_coindesk_ingest(limit=args.limit)
+        emit_structured_log("cli.command.done", command=command, result=result)
         print(
             "ingest complete: "
             f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']}"
@@ -72,15 +96,19 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "ingest-all":
         results = run_all_sources_ingest(limit=args.limit)
+        emit_structured_log("cli.command.done", command=command, result=results)
         for source_name, result in results.items():
+            failed = result.get("failed", 0)
             print(
                 f"{source_name}: "
                 f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']}"
+                f" failed={failed}"
             )
         return
 
     if args.command == "normalize-events":
         result = run_normalize(limit=args.limit)
+        emit_structured_log("cli.command.done", command=command, result=result)
         print(
             "normalize complete: "
             f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']}"
@@ -89,6 +117,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "deduplicate-events":
         result = run_deduplicate(limit=args.limit)
+        emit_structured_log("cli.command.done", command=command, result=result)
         print(
             "deduplicate complete: "
             f"fetched={result['fetched']} updated={result['updated']} "
@@ -98,6 +127,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "analyze-events":
         result = run_analyze_events(limit=args.limit)
+        emit_structured_log("cli.command.done", command=command, result=result)
         print(
             "analyze complete: "
             f"fetched={result['fetched']} inserted={result['inserted']} skipped={result['skipped']} "
@@ -112,6 +142,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             reports_dir=args.reports_dir,
             translate_to_zh=args.translate_zh,
         )
+        emit_structured_log("cli.command.done", command=command, result=result)
         print(
             "publish complete: "
             f"events={result['events']} report_path={result['report_path']} "
@@ -121,11 +152,29 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
         return
 
+    if args.command == "publish-alerts":
+        result = run_publish_alerts(
+            limit=args.limit,
+            reports_dir=args.reports_dir,
+            min_importance=args.min_importance,
+            notify=args.notify,
+        )
+        emit_structured_log("cli.command.done", command=command, result=result)
+        print(
+            "alert publish complete: "
+            f"alerts={result['alerts']} report_path={result['report_path']} "
+            f"min_importance={result['min_importance']} "
+            f"notify_status={result['notify_status']}"
+        )
+        return
+
     if args.command == "tool-query":
         result = answer_question(args.question, backend=args.backend)
+        emit_structured_log("cli.command.done", command=command, result=result)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
+    emit_structured_log("cli.command.done", command=command, result="scaffold_ready")
     print("crypto-market-intel-agent: scaffold ready")
 
 

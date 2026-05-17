@@ -11,14 +11,18 @@ from sqlalchemy import inspect, select, text
 
 from crypto_market_intel.db.engine import create_db_engine, create_session_factory, get_database_url
 from crypto_market_intel.db.models import Base, Event
+from crypto_market_intel.observability import emit_structured_log
 
 
 def run_deduplicate(limit: int = 200, verbose: bool = True) -> dict[str, int]:
+	emit_structured_log("pipeline.deduplicate.start", limit=limit, verbose=verbose)
 	engine = create_db_engine(get_database_url())
 	Base.metadata.create_all(engine)
 	_ensure_event_columns(engine)
 	session_factory = create_session_factory(engine)
-	return _deduplicate_with_session_factory(session_factory, limit=limit, verbose=verbose)
+	result = _deduplicate_with_session_factory(session_factory, limit=limit, verbose=verbose)
+	emit_structured_log("pipeline.deduplicate.done", result=result)
+	return result
 
 
 def _deduplicate_with_session_factory(session_factory, limit: int = 200, verbose: bool = False) -> dict[str, int]:
