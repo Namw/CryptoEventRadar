@@ -77,6 +77,19 @@ def test_publish_translate_zh_success(monkeypatch, tmp_path):
         session.add(source_record)
         session.flush()
 
+        second_source_record = SourceRecord(
+            source_name="coindesk_news",
+            source_record_id="news-2b",
+            title="BTC stable",
+            url="https://example.com/news2b",
+            published_at=datetime(2026, 5, 16, 11, 0, tzinfo=timezone.utc),
+            raw_payload='{"description": "sample"}',
+            content_hash="hash-2b",
+            fetched_at=datetime.now(timezone.utc),
+        )
+        session.add(second_source_record)
+        session.flush()
+
         session.add(
             Event(
                 event_id="event-2",
@@ -96,13 +109,44 @@ def test_publish_translate_zh_success(monkeypatch, tmp_path):
                 status="analyzed",
             )
         )
+        session.add(
+            Event(
+                event_id="event-2b",
+                source_record_db_id=second_source_record.id,
+                source="coindesk_news",
+                source_event_id="news-2b",
+                event_type="project_news",
+                title="BTC stable",
+                summary="BTC remains rangebound",
+                raw_text="sample",
+                event_time=datetime(2026, 5, 16, 11, 0, tzinfo=timezone.utc),
+                detected_at=datetime.now(timezone.utc),
+                source_url="https://example.com/news2b",
+                assets_json='["BTC"]',
+                importance_score=0.6,
+                importance_reason="Limited near-term catalyst",
+                status="analyzed",
+            )
+        )
         session.commit()
+
+    calls: list[list[int]] = []
 
     def fake_build_card_translator(*, translate_to_zh: bool):
         assert translate_to_zh is True
 
-        def fake_translate(title: str, summary: str, importance_reason: str):
-            return f"中文:{title}", f"中文:{summary}", f"中文:{importance_reason}"
+        def fake_translate(items, progress_callback=None):
+            calls.append([item.index for item in items])
+            if progress_callback is not None:
+                progress_callback(1, 1, items)
+            return {
+                item.index: (
+                    f"中文:{item.title}",
+                    f"中文:{item.summary}",
+                    f"中文:{item.importance_reason}",
+                )
+                for item in items
+            }
 
         return fake_translate, "ok"
 
@@ -115,12 +159,84 @@ def test_publish_translate_zh_success(monkeypatch, tmp_path):
         translate_to_zh=True,
     )
 
-    assert result["translated_cards"] == 1
+    assert calls == [[1, 2]]
+    assert result["translated_cards"] == 2
     assert result["translation_fallback_cards"] == 0
     report_path = Path(str(result["report_path"]))
     content = report_path.read_text(encoding="utf-8")
     assert "中文:ETH rises" in content
     assert "中文:ETH gains momentum" in content
+    assert "中文:BTC stable" in content
+
+
+def test_publish_translate_zh_prints_progress(monkeypatch, tmp_path, capsys):
+    engine = create_db_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+
+    with session_factory() as session:
+        source_record = SourceRecord(
+            source_name="coindesk_news",
+            source_record_id="news-progress-1",
+            title="SOL ecosystem update",
+            url="https://example.com/news-progress-1",
+            published_at=datetime(2026, 5, 16, 10, 0, tzinfo=timezone.utc),
+            raw_payload='{"description": "sample"}',
+            content_hash="hash-progress-1",
+            fetched_at=datetime.now(timezone.utc),
+        )
+        session.add(source_record)
+        session.flush()
+
+        session.add(
+            Event(
+                event_id="event-progress-1",
+                source_record_db_id=source_record.id,
+                source="coindesk_news",
+                source_event_id="news-progress-1",
+                event_type="project_news",
+                title="SOL ecosystem update",
+                summary="SOL ecosystem remains active",
+                raw_text="sample",
+                event_time=datetime(2026, 5, 16, 10, 0, tzinfo=timezone.utc),
+                detected_at=datetime.now(timezone.utc),
+                source_url="https://example.com/news-progress-1",
+                assets_json='["SOL"]',
+                importance_score=0.75,
+                importance_reason="Potential market attention",
+                status="analyzed",
+            )
+        )
+        session.commit()
+
+    def fake_build_card_translator(*, translate_to_zh: bool):
+        assert translate_to_zh is True
+
+        def fake_translate(items, progress_callback=None):
+            if progress_callback is not None:
+                progress_callback(1, 1, items)
+            return {
+                item.index: (
+                    f"中文:{item.title}",
+                    f"中文:{item.summary}",
+                    f"中文:{item.importance_reason}",
+                )
+                for item in items
+            }
+
+        return fake_translate, "ok"
+
+    monkeypatch.setattr(publish_module, "_build_card_translator", fake_build_card_translator)
+
+    _publish_with_session_factory(
+        session_factory,
+        limit=10,
+        reports_dir=str(tmp_path),
+        translate_to_zh=True,
+    )
+
+    captured = capsys.readouterr()
+    assert "[publish-report] 正在翻译批次 1/1（1 条）: SOL ecosystem update" in captured.out
 
 
 def test_publish_translate_zh_fallback_when_translator_unavailable(monkeypatch, tmp_path):

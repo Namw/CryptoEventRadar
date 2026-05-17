@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -14,6 +15,20 @@ from sqlalchemy import select
 from crypto_market_intel.db.engine import create_db_engine, create_session_factory, get_database_url
 from crypto_market_intel.db.models import Base, Event
 from crypto_market_intel.schemas.report import DailyReport
+
+
+@dataclass(frozen=True)
+class ReportCardTranslationItem:
+	index: int
+	title: str
+	summary: str
+	importance_reason: str
+
+
+BatchCardTranslator = Callable[
+	[list[ReportCardTranslationItem], Callable[[int, int, list[ReportCardTranslationItem]], None] | None],
+	dict[int, tuple[str, str, str]],
+]
 
 
 def run_publish(limit: int = 30, reports_dir: str = "reports", translate_to_zh: bool = False) -> dict[str, str | int | bool]:
@@ -43,26 +58,32 @@ def _publish_with_session_factory(
 		)
 		events = list(session.scalars(stmt).all())
 
-	translator, translator_reason = _build_card_translator(translate_to_zh=translate_to_zh)
-	report, translated_cards, translation_fallback_cards = _build_daily_report(
-		events,
-		card_translator=translator,
-	)
-	report_path = _write_report(report, reports_dir=reports_dir)
-	return {
-		"events": len(events),
-		"report_path": str(report_path),
-		"report_title": report.title,
-		"translate_to_zh": translate_to_zh,
-		"translated_cards": translated_cards,
-		"translation_fallback_cards": translation_fallback_cards,
-		"translation_reason": translator_reason or "ok",
-	}
+		translator, translator_reason = _build_card_translator(translate_to_zh=translate_to_zh)
+		translation_progress_callback = _build_translation_progress_callback(
+			enabled=translate_to_zh and translator is not None,
+			total=len(events),
+		)
+		report, translated_cards, translation_fallback_cards = _build_daily_report(
+			events,
+			card_translator=translator,
+			translation_progress_callback=translation_progress_callback,
+		)
+		report_path = _write_report(report, reports_dir=reports_dir)
+		return {
+			"events": len(events),
+			"report_path": str(report_path),
+			"report_title": report.title,
+			"translate_to_zh": translate_to_zh,
+			"translated_cards": translated_cards,
+			"translation_fallback_cards": translation_fallback_cards,
+			"translation_reason": translator_reason or "ok",
+		}
 
 
 def _build_daily_report(
 	events: list[Event],
-	card_translator: Callable[[str, str, str], tuple[str, str, str] | None] | None,
+	card_translator: BatchCardTranslator | None,
+	translation_progress_callback: Callable[[int, int, list[ReportCardTranslationItem]], None] | None = None,
 ) -> tuple[DailyReport, int, int]:
 	now_local = datetime.now().astimezone()
 	report_date = now_local.strftime("%Y-%m-%d")
@@ -87,10 +108,21 @@ def _build_daily_report(
 		return DailyReport(report_date=report_date, title=title, content_markdown="\n".join(header_lines)), 0, 0
 
 	body_lines = ["## 重点事件卡片", ""]
+	translation_items = _build_translation_items(events)
+	translations_by_index = _translate_cards(
+		items=translation_items,
+		card_translator=card_translator,
+		translation_progress_callback=translation_progress_callback,
+	)
 	translated_cards = 0
 	translation_fallback_cards = 0
 	for index, event in enumerate(events, start=1):
-		card_lines, translated = _format_event_card(index=index, event=event, card_translator=card_translator)
+		translated_triplet = translations_by_index.get(index)
+		card_lines, translated = _format_event_card(
+			index=index,
+			event=event,
+			translated_triplet=translated_triplet,
+		)
 		body_lines.extend(card_lines)
 		if translated:
 			translated_cards += 1
@@ -109,7 +141,7 @@ def _format_event_card(
 	*,
 	index: int,
 	event: Event,
-	card_translator: Callable[[str, str, str], tuple[str, str, str] | None] | None,
+	translated_triplet: tuple[str, str, str] | None = None,
 ) -> tuple[list[str], bool]:
 	assets = _parse_assets(event.assets_json)
 	assets_text = "、".join(assets) if assets else "未识别"
@@ -119,13 +151,10 @@ def _format_event_card(
 	summary = (event.summary or "暂无摘要").strip()
 	importance_reason = (event.importance_reason or "暂无重要度说明").strip()
 	source_url = (event.source_url or "").strip()
-	translated = False
+	translated = translated_triplet is not None
 
-	if card_translator is not None:
-		translated_triplet = card_translator(title, summary, importance_reason)
-		if translated_triplet is not None:
-			title, summary, importance_reason = translated_triplet
-			translated = True
+	if translated_triplet is not None:
+		title, summary, importance_reason = translated_triplet
 
 	source_credibility = f"{event.source_credibility:.2f}" if hasattr(event, "source_credibility") and event.source_credibility is not None else "N/A"
 	lines = [
@@ -146,7 +175,7 @@ def _format_event_card(
 
 def _build_card_translator(
 	*, translate_to_zh: bool
-) -> tuple[Callable[[str, str, str], tuple[str, str, str] | None] | None, str | None]:
+) -> tuple[BatchCardTranslator | None, str | None]:
 	if not translate_to_zh:
 		return None, "translation_disabled"
 
@@ -162,45 +191,138 @@ def _build_card_translator(
 	except ValueError:
 		timeout_seconds = 20.0
 
+	batch_size = _load_translation_batch_size()
+	# 批量翻译每条约 10s，给足余量；至少 60s 兜底
+	batch_timeout = max(60.0, timeout_seconds * batch_size)
+
 	llm = ChatOpenAI(
 		model=model,
 		api_key=SecretStr(api_key),
 		base_url=base_url,
 		temperature=0,
-		timeout=max(5.0, timeout_seconds),
+		timeout=batch_timeout,
 	)
 
-	def translate_card(title: str, summary: str, importance_reason: str) -> tuple[str, str, str] | None:
-		payload = {
-			"title": title,
-			"summary": summary,
-			"importance_reason": importance_reason,
-		}
+	def translate_cards(
+		items: list[ReportCardTranslationItem],
+		progress_callback: Callable[[int, int, list[ReportCardTranslationItem]], None] | None = None,
+	) -> dict[int, tuple[str, str, str]]:
+		if not items:
+			return {}
+
+		results: dict[int, tuple[str, str, str]] = {}
+		batches = [items[start : start + batch_size] for start in range(0, len(items), batch_size)]
+		total_batches = len(batches)
 		prompt = (
-			"请将输入 JSON 中的 title、summary、importance_reason 翻译为简体中文。"
+			"请将输入 JSON 中 items 数组里的 title、summary、importance_reason 翻译为简体中文。"
+			"必须保留每个条目的 index，不要增加或删除条目，不要改变顺序。"
 			"保留币种符号、数字、专有名词和链接，不要增加解释。仅返回 JSON。"
 		)
-		try:
-			response = llm.invoke(
-				[
-					SystemMessage(content="你是金融科技文案翻译助手。"),
-					HumanMessage(content=prompt + "\n" + json.dumps(payload, ensure_ascii=False)),
-				]
-			)
-			content = _extract_langchain_content(response.content)
-			if not content:
-				return None
-			parsed = _parse_translation_json(content)
-			if parsed is None:
-				return None
-			translated_title = str(parsed.get("title") or "").strip() or title
-			translated_summary = str(parsed.get("summary") or "").strip() or summary
-			translated_reason = str(parsed.get("importance_reason") or "").strip() or importance_reason
-			return translated_title, translated_summary, translated_reason
-		except Exception:
-			return None
 
-	return translate_card, "ok"
+		for batch_index, batch in enumerate(batches, start=1):
+			if progress_callback is not None:
+				progress_callback(batch_index, total_batches, batch)
+
+			payload = {
+				"items": [
+					{
+						"index": item.index,
+						"title": item.title,
+						"summary": item.summary,
+						"importance_reason": item.importance_reason,
+					}
+					for item in batch
+				]
+			}
+
+			try:
+				response = llm.invoke(
+					[
+						SystemMessage(content="你是金融科技文案翻译助手。"),
+						HumanMessage(content=prompt + "\n" + json.dumps(payload, ensure_ascii=False)),
+					]
+				)
+				content = _extract_langchain_content(response.content)
+				if not content:
+					_debug_log(f"[translate] 批次 {batch_index}: LLM 返回空内容")
+					continue
+				parsed = _parse_batch_translation_json(content)
+				if parsed is None:
+					_debug_log(
+						f"[translate] 批次 {batch_index}: JSON 解析失败，原始内容前 300 字符：\n{content[:300]}"
+					)
+					continue
+				batch_results = _extract_batch_translation_items(parsed)
+				_debug_log(f"[translate] 批次 {batch_index}: 解析到 {len(batch_results)} 条翻译")
+			except Exception as exc:
+				_debug_log(f"[translate] 批次 {batch_index}: 异常 {exc}")
+				continue
+
+			for item in batch:
+				translated_triplet = batch_results.get(item.index)
+				if translated_triplet is not None:
+					results[item.index] = translated_triplet
+
+		return results
+
+	return translate_cards, "ok"
+
+
+def _build_translation_progress_callback(
+	*,
+	enabled: bool,
+	total: int,
+	batch_size: int | None = None,
+) -> Callable[[int, int, list[ReportCardTranslationItem]], None] | None:
+	if not enabled or total <= 0:
+		return None
+
+	resolved_batch_size = batch_size or _load_translation_batch_size()
+	total_batches = (total + resolved_batch_size - 1) // resolved_batch_size
+
+	def report_progress(batch_index: int, _reported_total_batches: int, batch: list[ReportCardTranslationItem]) -> None:
+		first_title = batch[0].title if batch else "未命名事件"
+		short_title = first_title if len(first_title) <= 60 else f"{first_title[:57]}..."
+		print(
+			f"[publish-report] 正在翻译批次 {batch_index}/{total_batches}（{len(batch)} 条）: {short_title}",
+			flush=True,
+		)
+
+	return report_progress
+
+
+def _build_translation_items(events: list[Event]) -> list[ReportCardTranslationItem]:
+	items: list[ReportCardTranslationItem] = []
+	for index, event in enumerate(events, start=1):
+		items.append(
+			ReportCardTranslationItem(
+				index=index,
+				title=(event.title or "未命名事件").strip(),
+				summary=(event.summary or "暂无摘要").strip(),
+				importance_reason=(event.importance_reason or "暂无重要度说明").strip(),
+			)
+		)
+	return items
+
+
+def _translate_cards(
+	*,
+	items: list[ReportCardTranslationItem],
+	card_translator: BatchCardTranslator | None,
+	translation_progress_callback: Callable[[int, int, list[ReportCardTranslationItem]], None] | None,
+) -> dict[int, tuple[str, str, str]]:
+	if card_translator is None or not items:
+		return {}
+	return card_translator(items, translation_progress_callback)
+
+
+def _load_translation_batch_size() -> int:
+	raw_value = os.getenv("REPORT_TRANSLATION_BATCH_SIZE", "5").strip()
+	try:
+		batch_size = int(raw_value)
+	except ValueError:
+		batch_size = 5
+	return max(1, batch_size)
 
 
 def _extract_langchain_content(content: object) -> str | None:
@@ -221,6 +343,7 @@ def _extract_langchain_content(content: object) -> str | None:
 
 
 def _parse_translation_json(content: str) -> dict[str, object] | None:
+	"""解析翻译 JSON，仅用于单卡片翻译（返回 dict）。"""
 	try:
 		parsed = json.loads(content)
 		if isinstance(parsed, dict):
@@ -235,6 +358,82 @@ def _parse_translation_json(content: str) -> dict[str, object] | None:
 			return None
 		except json.JSONDecodeError:
 			return None
+
+
+def _parse_batch_translation_json(content: str) -> dict[str, object] | None:
+	"""解析批量翻译 JSON，兼容多种 LLM 返回格式：
+	- {"items": [...]}  标准格式
+	- [...]              顶层数组
+	- {"translations": [...]}  其他键名
+	- Markdown 代码块包裹
+	"""
+	# 先去除 markdown 代码块包裹
+	cleaned = content.strip()
+	if cleaned.startswith("```"):
+		lines = cleaned.split("\n")
+		# 去掉首行 ```json 或 ``` 以及末行 ```
+		start = 1
+		end = len(lines)
+		if lines[-1].strip() == "```":
+			end -= 1
+		cleaned = "\n".join(lines[start:end]).strip()
+
+	try:
+		parsed = json.loads(cleaned)
+	except json.JSONDecodeError:
+		return None
+
+	# 顶层是列表：直接包装成标准格式
+	if isinstance(parsed, list):
+		return {"items": parsed}
+
+	if not isinstance(parsed, dict):
+		return None
+
+	# 标准格式：{"items": [...]}
+	if isinstance(parsed.get("items"), list):
+		return parsed
+
+	# 兜底：找第一个 list 类型的值作为 items
+	for value in parsed.values():
+		if isinstance(value, list):
+			return {"items": value}
+
+	return None
+
+
+def _extract_batch_translation_items(parsed: dict[str, object]) -> dict[int, tuple[str, str, str]]:
+	items = parsed.get("items")
+	if not isinstance(items, list):
+		return {}
+
+	results: dict[int, tuple[str, str, str]] = {}
+	for item in items:
+		if not isinstance(item, dict):
+			continue
+		raw_index = item.get("index")
+		try:
+			index = int(raw_index) if raw_index is not None else -1
+		except (TypeError, ValueError):
+			continue
+		if index <= 0:
+			continue
+
+		title = str(item.get("title") or "").strip()
+		summary = str(item.get("summary") or "").strip()
+		# 兼容 importance_reason 和 reason 两种键名
+		reason = str(item.get("importance_reason") or item.get("reason") or "").strip()
+		if not title or not summary or not reason:
+			continue
+		results[index] = (title, summary, reason)
+
+	return results
+
+
+def _debug_log(msg: str) -> None:
+	"""当 TRANSLATE_DEBUG=1 时输出调试信息。"""
+	if os.getenv("TRANSLATE_DEBUG", "").strip() == "1":
+		print(msg, flush=True)
 
 
 def _parse_assets(raw_assets: str) -> list[str]:

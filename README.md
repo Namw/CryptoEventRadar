@@ -88,6 +88,38 @@ uv run python main.py publish-report --limit 30 --translate-zh
 uv run python main.py publish-report --limit 30 --reports-dir reports
 ```
 
+## Week 3 工具路由（LangChain + MCP）
+
+当前支持两种后端：
+
+- `rules`：规则路由（本地稳定兜底）
+- `langchain_mcp`：LangChain Agent + MCP 工具调用
+
+推荐先在 `.env` 中配置：
+
+```env
+TOOL_ROUTER_BACKEND=langchain_mcp
+OPENAI_API_KEY=your_key
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_TIMEOUT_SECONDS=20
+```
+
+执行工具问答（默认读取 `TOOL_ROUTER_BACKEND`）：
+
+```bash
+uv run python main.py tool-query "BTC 今天涨跌多少"
+```
+
+也可以临时指定后端：
+
+```bash
+uv run python main.py tool-query "BTC 今天涨跌多少" --backend rules
+uv run python main.py tool-query "BTC 今天涨跌多少" --backend langchain_mcp
+```
+
+说明：当 `langchain_mcp` 依赖或 LLM 配置不可用时，会自动回退到 `rules` 后端，保证命令可用。
+
 ## Day 7：完整流程验证（已验证）
 
 使用临时数据库从零跑通一遍流程（不污染默认 `data/app.db`）：

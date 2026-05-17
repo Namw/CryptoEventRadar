@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -33,6 +34,34 @@ def build_default_tool_registry() -> ToolRegistry:
 
 
 def answer_question(
+    question: str,
+    *,
+    registry: ToolRegistry | None = None,
+    trace_id: str | None = None,
+    backend: str | None = None,
+) -> dict[str, Any]:
+    selected_backend = _resolve_backend(backend)
+    if selected_backend == "langchain_mcp":
+        try:
+            from crypto_market_intel.agents.langchain_mcp_router import answer_question_with_langchain_mcp
+
+            return answer_question_with_langchain_mcp(question=question, trace_id=trace_id)
+        except Exception as exc:
+            fallback_result = _answer_question_with_rules(
+                question=question,
+                registry=registry,
+                trace_id=trace_id,
+            )
+            fallback_result["backend"] = "rules_fallback"
+            fallback_result["backend_error"] = str(exc)
+            return fallback_result
+
+    result = _answer_question_with_rules(question=question, registry=registry, trace_id=trace_id)
+    result["backend"] = "rules"
+    return result
+
+
+def _answer_question_with_rules(
     question: str,
     *,
     registry: ToolRegistry | None = None,
@@ -75,6 +104,16 @@ def answer_question(
         "tool_calls": tool_calls,
         "conclusion": _build_conclusion(tool_calls),
     }
+
+
+def _resolve_backend(backend: str | None) -> str:
+    explicit = (backend or "").strip().lower()
+    if explicit in {"rules", "langchain_mcp"}:
+        return explicit
+    env_backend = os.getenv("TOOL_ROUTER_BACKEND", "").strip().lower()
+    if env_backend in {"rules", "langchain_mcp"}:
+        return env_backend
+    return "rules"
 
 
 def plan_tools_for_question(question: str) -> RoutePlan:

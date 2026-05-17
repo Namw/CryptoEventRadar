@@ -45,6 +45,13 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     tool_query_parser = subparsers.add_parser("tool-query", help="Route a natural language question to tools")
     tool_query_parser.add_argument("question", type=str, help="User question for tool routing")
+    tool_query_parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["rules", "langchain_mcp"],
+        default=None,
+        help="Tool routing backend; default follows TOOL_ROUTER_BACKEND env",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "ingest-binance":
@@ -115,7 +122,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         return
 
     if args.command == "tool-query":
-        result = answer_question(args.question)
+        result = answer_question(args.question, backend=args.backend)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
