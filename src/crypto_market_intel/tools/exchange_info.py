@@ -28,9 +28,9 @@ class ExchangeInfoTool:
         self.timeout_seconds = max(1.0, timeout_seconds)
         self._fetcher = fetcher or _fetch_exchange_pair_info
 
-    def run(self, request_data: ToolRequest) -> ToolResult:
-        exchange = str(request_data.args.get("exchange") or "binance").strip().lower()
-        symbol = str(request_data.args.get("symbol") or "").strip().upper()
+    def run(self, request: ToolRequest) -> ToolResult:
+        exchange = str(request.args.get("exchange") or "binance").strip().lower()
+        symbol = str(request.args.get("symbol") or "").strip().upper()
         if exchange not in self._SUPPORTED_EXCHANGES:
             return ToolResult.failure(
                 tool_name=self.name,

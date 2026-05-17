@@ -31,8 +31,8 @@ class HistoryLookupTool:
         self.default_limit = max(1, default_limit)
         self._fetcher = fetcher or _fetch_history_events
 
-    def run(self, request_data: ToolRequest) -> ToolResult:
-        symbol = str(request_data.args.get("symbol") or "").strip().upper()
+    def run(self, request: ToolRequest) -> ToolResult:
+        symbol = str(request.args.get("symbol") or "").strip().upper()
         if not _is_valid_symbol(symbol):
             return ToolResult.failure(
                 tool_name=self.name,
@@ -41,7 +41,7 @@ class HistoryLookupTool:
                 message="symbol is required and must be 2-15 uppercase letters or digits",
             )
 
-        raw_days = request_data.args.get("days", self.default_days)
+        raw_days = request.args.get("days", self.default_days)
         days = _to_positive_int(raw_days)
         if days is None:
             return ToolResult.failure(
@@ -51,7 +51,7 @@ class HistoryLookupTool:
                 message="days must be a positive integer",
             )
 
-        raw_limit = request_data.args.get("limit", self.default_limit)
+        raw_limit = request.args.get("limit", self.default_limit)
         limit = _to_positive_int(raw_limit)
         if limit is None:
             return ToolResult.failure(
@@ -61,7 +61,7 @@ class HistoryLookupTool:
                 message="limit must be a positive integer",
             )
 
-        event_type = str(request_data.args.get("event_type") or "").strip().lower() or None
+        event_type = str(request.args.get("event_type") or "").strip().lower() or None
 
         ended_at = datetime.now(timezone.utc)
         started_at = ended_at - timedelta(days=days)

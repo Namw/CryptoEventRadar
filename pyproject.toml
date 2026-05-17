@@ -24,5 +24,6 @@ packages = ["src/crypto_market_intel"]
 
 [dependency-groups]
 dev = [
+  "pyright>=1.1.380",
   "pytest>=8.0.0",
 ]

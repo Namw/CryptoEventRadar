@@ -28,8 +28,8 @@ class MarketDataTool:
         self.timeout_seconds = max(1.0, timeout_seconds)
         self._fetcher = fetcher or _fetch_market_24h_from_binance
 
-    def run(self, request_data: ToolRequest) -> ToolResult:
-        symbol = str(request_data.args.get("symbol") or "").strip().upper()
+    def run(self, request: ToolRequest) -> ToolResult:
+        symbol = str(request.args.get("symbol") or "").strip().upper()
         if not _is_valid_symbol(symbol):
             return ToolResult.failure(
                 tool_name=self.name,

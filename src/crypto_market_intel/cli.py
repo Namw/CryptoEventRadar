@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Sequence
 
+from crypto_market_intel.agents.tool_router import answer_question
 from crypto_market_intel.pipeline.deduplicate import run_deduplicate
 from crypto_market_intel.pipeline.ingest import run_all_sources_ingest, run_binance_ingest, run_coindesk_ingest
 from crypto_market_intel.pipeline.normalize import run_normalize
@@ -40,6 +42,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         action="store_true",
         help="Translate report card text into Simplified Chinese via LLM",
     )
+
+    tool_query_parser = subparsers.add_parser("tool-query", help="Route a natural language question to tools")
+    tool_query_parser.add_argument("question", type=str, help="User question for tool routing")
 
     args = parser.parse_args(argv)
     if args.command == "ingest-binance":
@@ -107,6 +112,11 @@ def main(argv: Sequence[str] | None = None) -> None:
             f"translation_fallback_cards={result['translation_fallback_cards']} "
             f"translation_reason={result['translation_reason']}"
         )
+        return
+
+    if args.command == "tool-query":
+        result = answer_question(args.question)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
     print("crypto-market-intel-agent: scaffold ready")

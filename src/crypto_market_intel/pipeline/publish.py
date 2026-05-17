@@ -8,6 +8,7 @@ from typing import Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 from sqlalchemy import select
 
 from crypto_market_intel.db.engine import create_db_engine, create_session_factory, get_database_url
@@ -163,7 +164,7 @@ def _build_card_translator(
 
 	llm = ChatOpenAI(
 		model=model,
-		api_key=api_key,
+		api_key=SecretStr(api_key),
 		base_url=base_url,
 		temperature=0,
 		timeout=max(5.0, timeout_seconds),

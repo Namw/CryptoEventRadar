@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from dataclasses import dataclass
 from collections.abc import Iterable
 from typing import Any
@@ -9,6 +10,7 @@ from urllib import error
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 try:
 	from openai import (
@@ -139,7 +141,7 @@ def _analyze_with_llm(event: UnifiedEvent) -> tuple[EventAnalysis | None, str | 
 	try:
 		llm = ChatOpenAI(
 			model=config.model,
-			api_key=config.api_key,
+			api_key=SecretStr(config.api_key),
 			base_url=config.base_url,
 			temperature=0,
 			timeout=config.timeout_seconds,
@@ -257,6 +259,8 @@ def _build_analysis_from_llm_payload(event: UnifiedEvent, payload: dict[str, Any
 
 	raw_score = payload.get("importance_score")
 	try:
+		if raw_score is None:
+			raise TypeError
 		importance_score = float(raw_score)
 	except (TypeError, ValueError):
 		importance_score = _score_importance(event_type, assets)
@@ -301,7 +305,7 @@ def _classify_http_error_reason(exc: error.HTTPError) -> str:
 	return "llm_http_error"
 
 
-def _classify_status_error_reason(exc: APIStatusError) -> str:
+def _classify_status_error_reason(exc: Exception) -> str:
 	status = int(getattr(exc, "status_code", 0) or 0)
 	if status == 400:
 		return "llm_http_400_bad_request"
@@ -325,7 +329,7 @@ def _classify_status_error_reason(exc: APIStatusError) -> str:
 def _classify_url_error_reason(exc: error.URLError) -> str:
 	reason = getattr(exc, "reason", None)
 	text = str(reason or exc).lower()
-	if isinstance(reason, (TimeoutError, socket_timeout)) or "timed out" in text or "timeout" in text:
+	if isinstance(reason, (TimeoutError, socket.timeout)) or "timed out" in text or "timeout" in text:
 		return "llm_timeout"
 	if "name or service not known" in text or "nodename nor servname provided" in text:
 		return "llm_dns_error"
